@@ -108,49 +108,92 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildInterface() {
+        val bg = android.graphics.Color.rgb(7, 13, 25)
+        val surface = android.graphics.Color.rgb(17, 29, 47)
+        val muted = android.graphics.Color.rgb(151, 169, 190)
+        val accent = android.graphics.Color.rgb(39, 210, 177)
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(20, 18, 20, 18)
-            setBackgroundColor(android.graphics.Color.rgb(7, 17, 31))
+            setBackgroundColor(bg)
         }
-        val scroll = ScrollView(this)
+        val scroll = ScrollView(this).apply { isFillViewport = true }
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(18), dp(18), dp(28))
         }
-        val title = TextView(this).apply {
-            text = "FRT"
-            textSize = 30f
-            setTextColor(android.graphics.Color.rgb(22, 184, 232))
-            gravity = Gravity.CENTER
+
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, dp(16))
         }
-        val subtitle = TextView(this).apply {
-            text = "FACIAL RECOGNITION TECHNOLOGY • RESEARCH"
-            textSize = 11f
-            setTextColor(android.graphics.Color.LTGRAY)
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 12)
+        val brand = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, -2, 1f) }
+        brand.addView(makeText("FRT", 30f, android.graphics.Color.WHITE).apply { typeface = android.graphics.Typeface.DEFAULT_BOLD })
+        brand.addView(makeText("FIELD RESEARCH TERMINAL", 10f, muted))
+        val version = TextView(this).apply {
+            text = "LIVE • ON-DEVICE"
+            textSize = 10f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(accent)
+            setPadding(dp(10), dp(7), dp(10), dp(7))
+            background = rounded(android.graphics.Color.rgb(18, 65, 66), 18)
         }
+        header.addView(brand)
+        header.addView(version)
+        content.addView(header)
+
+        val cameraCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            background = rounded(surface, 18)
+        }
+        val cameraHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(2), dp(4), dp(10))
+        }
+        cameraHeader.addView(makeText("CAMERA MONITOR", 12f, muted).apply { typeface = android.graphics.Typeface.DEFAULT_BOLD; layoutParams = LinearLayout.LayoutParams(0, -2, 1f) })
+        cameraHeader.addView(makeText("FACE DETECTION", 10f, accent).apply { typeface = android.graphics.Typeface.DEFAULT_BOLD })
+        cameraCard.addView(cameraHeader)
+
         previewView = PreviewView(this).apply {
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
         }
-        status = makeText("Camera is off", 14f, android.graphics.Color.WHITE).apply {
-            gravity = Gravity.CENTER
-            setPadding(0, 12, 0, 4)
-        }
-        liveCount = makeText("Faces in view: —", 23f, android.graphics.Color.rgb(22, 184, 232)).apply {
-            gravity = Gravity.CENTER
-            setPadding(0, 4, 0, 4)
-        }
-        performanceStats = makeText("Performance: waiting for camera", 12f, android.graphics.Color.LTGRAY).apply {
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 8)
-        }
-        sessionStats = makeText("Session: not started", 14f, android.graphics.Color.WHITE).apply {
-            gravity = Gravity.CENTER
-            setPadding(0, 4, 0, 12)
-        }
-
         faceOverlay = FaceOverlayView(this)
+        val cameraContainer = FrameLayout(this).apply {
+            background = rounded(android.graphics.Color.BLACK, 12)
+            clipToOutline = true
+        }
+        cameraContainer.addView(previewView, FrameLayout.LayoutParams(-1, -1))
+        cameraContainer.addView(faceOverlay, FrameLayout.LayoutParams(-1, -1))
+        cameraCard.addView(cameraContainer, LinearLayout.LayoutParams(-1, dp(270)))
+        status = makeText("Camera is off • ready when you are", 12f, muted).apply {
+            setPadding(dp(4), dp(10), dp(4), dp(2))
+        }
+        cameraCard.addView(status)
+        content.addView(cameraCard)
+
+        val metrics = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = rounded(surface, 16)
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) }
+        }
+        liveCount = makeText("0 faces in view", 22f, accent).apply {
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+        }
+        sessionStats = makeText("Session not started", 12f, android.graphics.Color.WHITE).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, dp(7), 0, dp(5))
+        }
+        performanceStats = makeText("Analysis performance will appear here", 11f, muted).apply { gravity = Gravity.CENTER }
+        metrics.addView(liveCount)
+        metrics.addView(sessionStats)
+        metrics.addView(performanceStats)
+        content.addView(metrics)
+
         startButton = makeButton("START SESSION") { requestStart() }
         pauseButton = makeButton("PAUSE") { togglePause() }
         val stop = makeButton("SAVE & STOP") { finishSession("Session saved.") }
@@ -168,49 +211,57 @@ class MainActivity : AppCompatActivity() {
                     Toast.makeText(this, "History cleared.", Toast.LENGTH_SHORT).show()
                 }.show()
         }
+        val addParticipant = makeButton("ADD PARTICIPANT") { addParticipantDialog() }
+        val participantsButton = makeButton("PARTICIPANTS & QR BADGES") { showParticipants() }
 
-        val addParticipant = makeButton("ADD CONSENTING PARTICIPANT") { addParticipantDialog() }
-        val participantsButton = makeButton("VIEW PARTICIPANTS & QR BADGES (${savedParticipants.length()})") { showParticipants() }
-        val historyTitle = makeText("SAVED SESSIONS", 16f, android.graphics.Color.rgb(22, 184, 232)).apply {
-            setPadding(0, 18, 0, 8)
+        fun buttonRow(first: Button, second: Button) = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(first, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(6) })
+            addView(second, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginStart = dp(6) })
         }
-        historyText = makeText("No saved sessions yet.", 13f, android.graphics.Color.LTGRAY).apply {
-            setPadding(0, 0, 0, 14)
+        content.addView(startButton, LinearLayout.LayoutParams(-1, dp(52)).apply { topMargin = dp(14) })
+        content.addView(buttonRow(pauseButton, stop), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        content.addView(buttonRow(switch, addParticipant), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        content.addView(participantsButton, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(8) })
+
+        val historyCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = rounded(surface, 16)
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) }
         }
+        val historyHeader = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        historyHeader.addView(makeText("SESSION HISTORY", 13f, android.graphics.Color.WHITE).apply {
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+        })
+        historyHeader.addView(makeText("LOCAL STORAGE", 9f, accent).apply { typeface = android.graphics.Typeface.DEFAULT_BOLD })
+        historyCard.addView(historyHeader)
+        historyText = makeText("No saved sessions yet.", 12f, muted).apply { setPadding(0, dp(12), 0, dp(10)) }
+        historyCard.addView(historyText)
+        historyCard.addView(buttonRow(export, clear))
+        content.addView(historyCard)
+
         val privacy = makeText(
-            "PRIVACY: Detection runs on this device. FRT saves session statistics only—not face photos, face templates, or identities. The camera runs only while this screen is active.",
-            12f, android.graphics.Color.LTGRAY
+            "PRIVACY FIRST  •  Face detection runs on this device. FRT stores session statistics and participant profiles, not face photos or biometric templates. Camera stops when you leave this screen.",
+            10f, muted
         ).apply {
             gravity = Gravity.CENTER
-            setPadding(4, 12, 4, 8)
+            setPadding(dp(8), dp(16), dp(8), dp(8))
         }
-
-        content.addView(title)
-        content.addView(subtitle)
-        val cameraContainer = FrameLayout(this)
-        cameraContainer.addView(previewView, FrameLayout.LayoutParams(-1, -1))
-        cameraContainer.addView(faceOverlay, FrameLayout.LayoutParams(-1, -1))
-        content.addView(cameraContainer, LinearLayout.LayoutParams(-1, dp(250)).apply { bottomMargin = dp(6) })
-        content.addView(status)
-        content.addView(liveCount)
-        content.addView(sessionStats)
-        content.addView(performanceStats)
-        content.addView(startButton)
-        content.addView(pauseButton)
-        content.addView(stop)
-        content.addView(switch)
-        content.addView(addParticipant)
-        content.addView(participantsButton)
-        content.addView(historyTitle)
-        content.addView(historyText)
-        content.addView(export)
-        content.addView(clear)
         content.addView(privacy)
         scroll.addView(content)
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
         pauseButton.isEnabled = false
     }
+
+    private fun rounded(color: Int, radius: Int): android.graphics.drawable.GradientDrawable =
+        android.graphics.drawable.GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = dp(radius).toFloat()
+            setStroke(dp(1), android.graphics.Color.rgb(35, 52, 73))
+        }
 
     private fun makeText(value: String, size: Float, color: Int) = TextView(this).apply {
         text = value
@@ -221,6 +272,12 @@ class MainActivity : AppCompatActivity() {
     private fun makeButton(label: String, action: () -> Unit) = Button(this).apply {
         text = label
         isAllCaps = false
+        textSize = 11f
+        typeface = android.graphics.Typeface.DEFAULT_BOLD
+        setTextColor(android.graphics.Color.WHITE)
+        backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.rgb(29, 49, 70))
+        minHeight = dp(46)
+        setPadding(dp(8), 0, dp(8), 0)
         setOnClickListener { action() }
     }
 
