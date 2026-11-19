@@ -568,7 +568,7 @@ class MainActivity : AppCompatActivity() {
             val item = savedHistory.optJSONObject(i) ?: continue
             val date = formatter.format(Date(item.optLong("startedAt")))
             lines.add(
-                "${i + 1}. $date\n   Duration: ${formatDuration(item.optLong("durationSeconds"))} • Unique tracked: ${item.optInt("uniqueFaces", item.optInt("faceObservations"))} • Peak: ${item.optInt("peakFaces")}"
+                "${i + 1}. $date\n   Duration: ${formatDuration(item.optLong("durationSeconds"))} • Unique tracked: ${item.optInt("uniqueFaces", 0)} • Peak: ${item.optInt("peakFaces")}"
             )
         }
         historyText.text = lines.joinToString("\n\n")
