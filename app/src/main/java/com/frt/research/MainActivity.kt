@@ -3,6 +3,7 @@ package com.frt.research
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -37,6 +38,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var status: TextView
     private lateinit var liveCount: TextView
     private lateinit var sessionStats: TextView
+    private lateinit var performanceStats: TextView
     private lateinit var historyText: TextView
     private lateinit var startButton: Button
     private lateinit var pauseButton: Button
@@ -53,6 +55,10 @@ class MainActivity : AppCompatActivity() {
     private var framesAnalyzed = 0
     private var peakFaces = 0
     private var currentFaces = 0
+    private var currentFps = 0
+    private var lastProcessingMs = 0L
+    private var perfFrames = 0
+    private var perfWindowStart = 0L
     private var savedHistory = JSONArray()
     private var pendingCsv = ""
 
@@ -118,6 +124,10 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setPadding(0, 4, 0, 4)
         }
+        performanceStats = makeText("Performance: waiting for camera", 12f, android.graphics.Color.LTGRAY).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, 8)
+        }
         sessionStats = makeText("Session: not started", 14f, android.graphics.Color.WHITE).apply {
             gravity = Gravity.CENTER
             setPadding(0, 4, 0, 12)
@@ -161,6 +171,7 @@ class MainActivity : AppCompatActivity() {
         content.addView(status)
         content.addView(liveCount)
         content.addView(sessionStats)
+        content.addView(performanceStats)
         content.addView(startButton)
         content.addView(pauseButton)
         content.addView(stop)
@@ -210,6 +221,11 @@ class MainActivity : AppCompatActivity() {
         framesAnalyzed = 0
         peakFaces = 0
         currentFaces = 0
+        currentFps = 0
+        lastProcessingMs = 0L
+        perfFrames = 0
+        perfWindowStart = SystemClock.elapsedRealtime()
+        performanceStats.text = "Performance: measuring…"
         liveCount.text = "Faces in view: 0"
         updateSessionStats()
         startButton.text = "SESSION RUNNING"
@@ -273,6 +289,7 @@ class MainActivity : AppCompatActivity() {
                         return@setAnalyzer
                     }
                     val image = InputImage.fromMediaImage(mediaImage, proxy.imageInfo.rotationDegrees)
+                    val processingStartedAt = SystemClock.elapsedRealtime()
                     newDetector.process(image)
                         .addOnSuccessListener { faces ->
                             val found = faces.size
@@ -294,6 +311,17 @@ class MainActivity : AppCompatActivity() {
                             runOnUiThread { status.text = "Detection error. Try restarting the session." }
                         }
                         .addOnCompleteListener {
+                            val completedAt = SystemClock.elapsedRealtime()
+                            lastProcessingMs = completedAt - processingStartedAt
+                            perfFrames += 1
+                            if (completedAt - perfWindowStart >= 1000L) {
+                                currentFps = (perfFrames * 1000L / (completedAt - perfWindowStart)).toInt()
+                                perfFrames = 0
+                                perfWindowStart = completedAt
+                            }
+                            runOnUiThread {
+                                if (sessionActive) performanceStats.text = "Analysis: ${currentFps} FPS • Last frame: ${lastProcessingMs} ms"
+                            }
                             analyzing.set(false)
                             proxy.close()
                         }
@@ -338,6 +366,7 @@ class MainActivity : AppCompatActivity() {
         detector?.close()
         detector = null
         liveCount.text = "Faces in view: —"
+        performanceStats.text = "Performance: session ended"
         status.text = "Camera stopped • session saved"
         sessionStats.text = "Last session: ${formatDuration(duration)} • $faceObservations face observations • peak $peakFaces"
         startButton.text = "START NEW SESSION"
