@@ -65,6 +65,8 @@ class MainActivity : AppCompatActivity() {
     private var paused = false
     private var sessionStartedAt = 0L
     private var faceObservations = 0
+    private var uniqueFaceCount = 0
+    private val seenTrackingIds = mutableSetOf<Int>()
     private var framesAnalyzed = 0
     private var peakFaces = 0
     private var currentFaces = 0
@@ -241,6 +243,8 @@ class MainActivity : AppCompatActivity() {
         paused = false
         sessionStartedAt = System.currentTimeMillis()
         faceObservations = 0
+        uniqueFaceCount = 0
+        seenTrackingIds.clear()
         framesAnalyzed = 0
         peakFaces = 0
         currentFaces = 0
@@ -291,6 +295,7 @@ class MainActivity : AppCompatActivity() {
                     .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
                     .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
                     .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
+                    .enableTracking()
                     .build()
                 val newDetector = FaceDetection.getClient(options)
                 detector = newDetector
@@ -316,17 +321,21 @@ class MainActivity : AppCompatActivity() {
                     newDetector.process(image)
                         .addOnSuccessListener { faces ->
                             val found = faces.size
-                            val faceRects = faces.map { Rect(it.boundingBox) }
-                            runOnUiThread { faceOverlay.updateFaces(faceRects, proxy.width, proxy.height, proxy.imageInfo.rotationDegrees) }
+                            val trackedFaces = faces.mapIndexed { index, face ->
+                                Pair(Rect(face.boundingBox), face.trackingId ?: (-(index + 1)))
+                            }
+                            runOnUiThread { faceOverlay.updateFaces(trackedFaces, proxy.width, proxy.height, proxy.imageInfo.rotationDegrees) }
                             synchronized(this) {
                                 currentFaces = found
                                 faceObservations += found
+                                trackedFaces.map { it.second }.filter { it > 0 }.forEach { seenTrackingIds.add(it) }
+                                uniqueFaceCount = seenTrackingIds.size
                                 framesAnalyzed += 1
                                 if (found > peakFaces) peakFaces = found
                             }
                             runOnUiThread {
                                 if (sessionActive && !paused) {
-                                    liveCount.text = "Faces in view: $found"
+                                    liveCount.text = "Faces in view: $found  •  Unique this session: $uniqueFaceCount"
                                     status.text = if (found == 0) "Scanning live feed…" else "Face(s) detected • on-device"
                                     updateSessionStats()
                                 }
@@ -364,7 +373,7 @@ class MainActivity : AppCompatActivity() {
     private fun updateSessionStats() {
         if (!sessionActive) return
         val seconds = ((System.currentTimeMillis() - sessionStartedAt) / 1000).coerceAtLeast(0)
-        sessionStats.text = "Time: ${formatDuration(seconds)}   •   Face observations: $faceObservations   •   Peak in view: $peakFaces"
+        sessionStats.text = "${formatDuration(seconds)} elapsed   •   $uniqueFaceCount unique tracked faces   •   Peak in view: $peakFaces"
     }
 
     private fun finishSession(message: String) {
@@ -383,6 +392,7 @@ class MainActivity : AppCompatActivity() {
             put("endedAt", endedAt)
             put("durationSeconds", duration)
             put("faceObservations", faceObservations)
+            put("uniqueFaces", uniqueFaceCount)
             put("framesAnalyzed", framesAnalyzed)
             put("peakFaces", peakFaces)
         }
@@ -394,7 +404,7 @@ class MainActivity : AppCompatActivity() {
         faceOverlay.updateFaces(emptyList(), 1, 1, 0)
         performanceStats.text = "Performance: session ended"
         status.text = "Camera stopped • session saved"
-        sessionStats.text = "Last session: ${formatDuration(duration)} • $faceObservations face observations • peak $peakFaces"
+        sessionStats.text = "Last session: ${formatDuration(duration)} • $uniqueFaceCount unique tracked faces • peak $peakFaces"
         startButton.text = "START NEW SESSION"
         startButton.isEnabled = true
         pauseButton.text = "PAUSE"
@@ -501,20 +511,21 @@ class MainActivity : AppCompatActivity() {
             val item = savedHistory.optJSONObject(i) ?: continue
             val date = formatter.format(Date(item.optLong("startedAt")))
             lines.add(
-                "${i + 1}. $date\n   Duration: ${formatDuration(item.optLong("durationSeconds"))} • Face observations: ${item.optInt("faceObservations")} • Peak: ${item.optInt("peakFaces")}"
+                "${i + 1}. $date\n   Duration: ${formatDuration(item.optLong("durationSeconds"))} • Unique tracked: ${item.optInt("uniqueFaces", item.optInt("faceObservations"))} • Peak: ${item.optInt("peakFaces")}"
             )
         }
         historyText.text = lines.joinToString("\n\n")
     }
 
     private fun exportHistory() {
-        val csv = StringBuilder("Started,Ended,Duration seconds,Face observations,Frames analyzed,Peak faces\n")
+        val csv = StringBuilder("Started,Ended,Duration seconds,Unique tracked faces,Frame detections,Frames analyzed,Peak faces\n")
         val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
         for (i in 0 until savedHistory.length()) {
             val item = savedHistory.optJSONObject(i) ?: continue
             csv.append(formatter.format(Date(item.optLong("startedAt")))).append(',')
                 .append(formatter.format(Date(item.optLong("endedAt")))).append(',')
                 .append(item.optLong("durationSeconds")).append(',')
+                .append(item.optInt("uniqueFaces", item.optInt("faceObservations"))).append(',')
                 .append(item.optInt("faceObservations")).append(',')
                 .append(item.optInt("framesAnalyzed")).append(',')
                 .append(item.optInt("peakFaces")).append('\n')
@@ -544,12 +555,12 @@ class MainActivity : AppCompatActivity() {
             color = android.graphics.Color.WHITE; textSize = 32f; style = Paint.Style.FILL
         }
         private val labelBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.rgb(0, 120, 100); style = Paint.Style.FILL }
-        private var boxes: List<Rect> = emptyList()
+        private var boxes: List<Pair<Rect, Int>> = emptyList()
         private var sourceWidth = 1
         private var sourceHeight = 1
         private var rotation = 0
 
-        fun updateFaces(newBoxes: List<Rect>, width: Int, height: Int, degrees: Int) {
+        fun updateFaces(newBoxes: List<Pair<Rect, Int>>, width: Int, height: Int, degrees: Int) {
             boxes = newBoxes; sourceWidth = width.coerceAtLeast(1); sourceHeight = height.coerceAtLeast(1); rotation = degrees
             invalidate()
         }
@@ -562,14 +573,14 @@ class MainActivity : AppCompatActivity() {
             val scale = maxOf(width / imageW, height / imageH)
             val offsetX = (width - imageW * scale) / 2f
             val offsetY = (height - imageH * scale) / 2f
-            boxes.forEachIndexed { index, r ->
+            boxes.forEach { (r, trackId) ->
                 val mapped = if (rotation == 90) RectF(sourceHeight - r.bottom.toFloat(), r.left.toFloat(), sourceHeight - r.top.toFloat(), r.right.toFloat())
                     else if (rotation == 270) RectF(r.top.toFloat(), sourceWidth - r.right.toFloat(), r.bottom.toFloat(), sourceWidth - r.left.toFloat())
                     else RectF(r)
                 mapped.left = mapped.left * scale + offsetX; mapped.right = mapped.right * scale + offsetX
                 mapped.top = mapped.top * scale + offsetY; mapped.bottom = mapped.bottom * scale + offsetY
                 canvas.drawRoundRect(mapped, 10f, 10f, boxPaint)
-                val label = "Face ${index + 1}"
+                val label = if (trackId > 0) "Track $trackId" else "Face"
                 val labelWidth = labelPaint.measureText(label) + 20f
                 val labelTop = (mapped.top - 42f).coerceAtLeast(0f)
                 canvas.drawRoundRect(mapped.left, labelTop, mapped.left + labelWidth, labelTop + 38f, 7f, 7f, labelBg)
