@@ -1,29 +1,30 @@
 # FRT — Facial Recognition Technology
 
-FRT is an Android research prototype. Version 1.0 provides visible, foreground camera preview and on-device face detection/counting using CameraX and Google ML Kit.
+FRT is an Android research app for visible, on-device face detection and aggregate session tracking.
 
-## Current capabilities
-- Android camera permission prompt
-- Live camera preview while the app is open
-- On-device face detection and count
-- No face images or biometric templates are stored
-- No identity lookup or internet face search
+## Features
+- Live camera preview with front/back camera switching
+- On-device face detection and live face count using CameraX and Google ML Kit
+- Start, pause, resume, and save-and-stop session controls
+- Local session history saved on the phone
+- Session duration, total face observations, analyzed frames, and peak faces in view
+- Export saved session summaries to CSV using Android's file picker
+- Clear saved session history from the app
+- Camera sessions automatically stop and save when the app leaves the foreground
 
-## Build an APK online with GitHub Actions
-1. Create a new GitHub repository named `FRT`.
-2. Upload the contents of this folder to the repository root (not the containing FRT folder).
-3. Open the repository's **Actions** tab.
-4. Select **Build FRT APK** and choose **Run workflow**, or push to `main`.
-5. Open the completed workflow run.
-6. Under **Artifacts**, download `FRT-debug-apk`.
-7. Extract the ZIP and install `app-debug.apk` on your Android phone.
+## Build an APK with GitHub Actions
+1. Open the repository's **Actions** tab.
+2. Select **Build FRT APK**.
+3. Open the newest successful run.
+4. Under **Artifacts**, download **FRT-debug-apk**.
+5. Extract the ZIP and install `app-debug.apk` on your Android phone.
 
-The APK is a debug build for testing. For wider distribution, create a properly signed release build and protect its signing key.
+The workflow also runs automatically whenever changes are pushed to `main`. The APK is a debug build for testing.
 
 ## Requirements
 - Android 6.0 (API 23) or newer
-- Internet connection for the first ML Kit model download
 - Camera permission
+- Internet may be needed the first time ML Kit downloads its face-detection model; session history and detection processing are local.
 
-## Privacy and safety
-Use the camera openly and only in settings where recording or analysis is permitted. This prototype does not identify people, automatically save unknown faces, or search the web for identities. For experiments involving participants, obtain informed consent and provide a clear deletion process before collecting data.
+## Privacy
+FRT stores aggregate session statistics only. It does not save face photographs, biometric templates, names, or identity matches, and it does not search the internet for identities. Camera access is used only while the app is in the foreground. Use the camera openly and only where analysis is permitted; obtain informed consent for research involving participants.
