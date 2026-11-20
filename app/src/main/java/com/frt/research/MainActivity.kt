@@ -42,6 +42,7 @@ import java.util.UUID
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.MultiFormatWriter
 import com.google.zxing.WriterException
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -67,6 +68,9 @@ class MainActivity : AppCompatActivity() {
     private var faceObservations = 0
     private var uniqueFaceCount = 0
     private val seenTrackingIds = mutableSetOf<Int>()
+    private val stableTrackFrames = mutableMapOf<Int, Int>()
+    // QR check-in is attendance only; it is never linked to a camera track.
+    private val checkedInParticipants = linkedMapOf<String, String>()
     private var framesAnalyzed = 0
     private var peakFaces = 0
     private var currentFaces = 0
@@ -213,6 +217,8 @@ class MainActivity : AppCompatActivity() {
         }
         val addParticipant = makeButton("ADD PARTICIPANT") { addParticipantDialog() }
         val participantsButton = makeButton("PARTICIPANTS & QR BADGES") { showParticipants() }
+        val scanQrButton = makeButton("SCAN CHECK-IN QR") { scanParticipantQr() }
+        val checkInsButton = makeButton("VIEW CHECK-INS") { showCheckIns() }
 
         fun buttonRow(first: Button, second: Button) = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -223,6 +229,7 @@ class MainActivity : AppCompatActivity() {
         content.addView(buttonRow(pauseButton, stop), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         content.addView(buttonRow(switch, addParticipant), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         content.addView(participantsButton, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(8) })
+        content.addView(buttonRow(scanQrButton, checkInsButton), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
 
         val historyCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -302,6 +309,8 @@ class MainActivity : AppCompatActivity() {
         faceObservations = 0
         uniqueFaceCount = 0
         seenTrackingIds.clear()
+        stableTrackFrames.clear()
+        checkedInParticipants.clear()
         framesAnalyzed = 0
         peakFaces = 0
         currentFaces = 0
@@ -349,7 +358,8 @@ class MainActivity : AppCompatActivity() {
                 cameraProvider = provider
                 detector?.close()
                 val options = FaceDetectorOptions.Builder()
-                    .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+                    .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
+                    .setMinFaceSize(0.08f)
                     .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
                     .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
                     .enableTracking()
@@ -377,10 +387,20 @@ class MainActivity : AppCompatActivity() {
                     val processingStartedAt = SystemClock.elapsedRealtime()
                     newDetector.process(image)
                         .addOnSuccessListener { faces ->
-                            val found = faces.size
-                            val trackedFaces = faces.mapIndexed { index, face ->
-                                Pair(Rect(face.boundingBox), face.trackingId ?: (-(index + 1)))
+                            // Reject very small boxes and require a track to persist across frames.
+                            val candidates = faces.filter { face ->
+                                face.trackingId != null &&
+                                    face.boundingBox.width() >= proxy.width * 0.07f &&
+                                    face.boundingBox.height() >= proxy.height * 0.07f
                             }
+                            val currentIds = candidates.mapNotNull { it.trackingId }.toSet()
+                            synchronized(this) {
+                                stableTrackFrames.keys.retainAll(currentIds)
+                                currentIds.forEach { id -> stableTrackFrames[id] = (stableTrackFrames[id] ?: 0) + 1 }
+                            }
+                            val stableFaces = candidates.filter { face -> (stableTrackFrames[face.trackingId] ?: 0) >= 2 }
+                            val found = stableFaces.size
+                            val trackedFaces = stableFaces.map { face -> Pair(Rect(face.boundingBox), face.trackingId ?: -1) }
                             runOnUiThread { faceOverlay.updateFaces(trackedFaces, proxy.width, proxy.height, proxy.imageInfo.rotationDegrees) }
                             synchronized(this) {
                                 currentFaces = found
@@ -430,7 +450,7 @@ class MainActivity : AppCompatActivity() {
     private fun updateSessionStats() {
         if (!sessionActive) return
         val seconds = ((System.currentTimeMillis() - sessionStartedAt) / 1000).coerceAtLeast(0)
-        sessionStats.text = "${formatDuration(seconds)} elapsed   •   $uniqueFaceCount unique tracked faces   •   Peak in view: $peakFaces"
+        sessionStats.text = "${formatDuration(seconds)} elapsed   •   $uniqueFaceCount tracked faces   •   ${checkedInParticipants.size} QR check-ins   •   Peak in view: $peakFaces"
     }
 
     private fun finishSession(message: String) {
@@ -450,6 +470,8 @@ class MainActivity : AppCompatActivity() {
             put("durationSeconds", duration)
             put("faceObservations", faceObservations)
             put("uniqueFaces", uniqueFaceCount)
+            put("checkedInCount", checkedInParticipants.size)
+            put("checkedInParticipantIds", JSONArray(checkedInParticipants.keys.toList()))
             put("framesAnalyzed", framesAnalyzed)
             put("peakFaces", peakFaces)
         }
@@ -550,6 +572,45 @@ class MainActivity : AppCompatActivity() {
         } catch (_: WriterException) {
             Toast.makeText(this, "Could not create QR badge.", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun scanParticipantQr() {
+        if (!sessionActive) {
+            Toast.makeText(this, "Start a session before checking participants in.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        GmsBarcodeScanning.getClient(this).startScan()
+            .addOnSuccessListener { barcode ->
+                val raw = barcode.rawValue.orEmpty()
+                val prefix = "FRT-PARTICIPANT:"
+                if (!raw.startsWith(prefix)) {
+                    Toast.makeText(this, "That QR code is not an FRT participant badge.", Toast.LENGTH_LONG).show()
+                    return@addOnSuccessListener
+                }
+                val participantId = raw.removePrefix(prefix)
+                val participant = (0 until savedParticipants.length()).asSequence()
+                    .mapNotNull { savedParticipants.optJSONObject(it) }
+                    .firstOrNull { it.optString("id") == participantId }
+                if (participant == null) {
+                    Toast.makeText(this, "Participant profile not found on this phone.", Toast.LENGTH_LONG).show()
+                    return@addOnSuccessListener
+                }
+                val participantName = participant.optString("name", "Participant")
+                checkedInParticipants[participantId] = participantName
+                updateSessionStats()
+                Toast.makeText(this, "$participantName checked in. This is separate from face tracking.", Toast.LENGTH_LONG).show()
+            }
+            .addOnFailureListener { error ->
+                Toast.makeText(this, "QR scan failed: ${error.localizedMessage ?: "try again"}", Toast.LENGTH_LONG).show()
+            }
+    }
+
+    private fun showCheckIns() {
+        val names = checkedInParticipants.values.toList()
+        val message = if (names.isEmpty()) "No participants checked in during this session." else
+            names.mapIndexed { index, name -> "${index + 1}. $name" }.joinToString("\n")
+        AlertDialog.Builder(this).setTitle("QR check-ins (${names.size})")
+            .setMessage(message).setPositiveButton("Close", null).show()
     }
 
     private fun persistHistory() {
