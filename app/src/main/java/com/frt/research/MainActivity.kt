@@ -398,7 +398,7 @@ class MainActivity : AppCompatActivity() {
                                 stableTrackFrames.keys.retainAll(currentIds)
                                 currentIds.forEach { id -> stableTrackFrames[id] = (stableTrackFrames[id] ?: 0) + 1 }
                             }
-                            val stableFaces = candidates.filter { face -> (stableTrackFrames[face.trackingId] ?: 0) >= 2 }
+                            val stableFaces = candidates.filter { face -> (face.trackingId?.let { stableTrackFrames[it] } ?: 0) >= 2 }
                             val found = stableFaces.size
                             val trackedFaces = stableFaces.map { face -> Pair(Rect(face.boundingBox), face.trackingId ?: -1) }
                             runOnUiThread { faceOverlay.updateFaces(trackedFaces, proxy.width, proxy.height, proxy.imageInfo.rotationDegrees) }
@@ -629,14 +629,14 @@ class MainActivity : AppCompatActivity() {
             val item = savedHistory.optJSONObject(i) ?: continue
             val date = formatter.format(Date(item.optLong("startedAt")))
             lines.add(
-                "${i + 1}. $date\n   Duration: ${formatDuration(item.optLong("durationSeconds"))} • Unique tracked: ${item.optInt("uniqueFaces", 0)} • Peak: ${item.optInt("peakFaces")}"
+                "${i + 1}. $date\n   Duration: ${formatDuration(item.optLong("durationSeconds"))} • Tracked: ${item.optInt("uniqueFaces", 0)} • QR check-ins: ${item.optInt("checkedInCount", 0)} • Peak: ${item.optInt("peakFaces")}"
             )
         }
         historyText.text = lines.joinToString("\n\n")
     }
 
     private fun exportHistory() {
-        val csv = StringBuilder("Started,Ended,Duration seconds,Unique tracked faces,Frame detections,Frames analyzed,Peak faces\n")
+        val csv = StringBuilder("Started,Ended,Duration seconds,Unique tracked faces,QR check-ins,Frame detections,Frames analyzed,Peak faces\n")
         val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
         for (i in 0 until savedHistory.length()) {
             val item = savedHistory.optJSONObject(i) ?: continue
@@ -644,6 +644,7 @@ class MainActivity : AppCompatActivity() {
                 .append(formatter.format(Date(item.optLong("endedAt")))).append(',')
                 .append(item.optLong("durationSeconds")).append(',')
                 .append(item.optInt("uniqueFaces", item.optInt("faceObservations"))).append(',')
+                .append(item.optInt("checkedInCount", 0)).append(',')
                 .append(item.optInt("faceObservations")).append(',')
                 .append(item.optInt("framesAnalyzed")).append(',')
                 .append(item.optInt("peakFaces")).append('\n')
