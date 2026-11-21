@@ -171,6 +171,9 @@ class MainActivity : AppCompatActivity() {
         }
         render = { page ->
             host.removeAllViews()
+            // Detach reusable widgets from the previous page before placing them in the new page.
+            listOf(previewView, faceOverlay, status, liveCount, sessionStats, performanceStats, startButton, pauseButton, historyText)
+                .forEach { view -> (view.parent as? android.view.ViewGroup)?.removeView(view) }
             val scroll = ScrollView(this)
             val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(8), dp(18), dp(18)) }
             when (page) {
