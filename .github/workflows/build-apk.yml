@@ -3,7 +3,7 @@ name: Build FRT APK
 on:
   workflow_dispatch:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "v2-redesign" ]
 
 jobs:
   build:
