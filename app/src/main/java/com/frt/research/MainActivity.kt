@@ -130,7 +130,8 @@ class MainActivity : AppCompatActivity() {
         val nav = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(8), dp(7), dp(8), dp(7)); background = rounded(surface, 17) }
         val pages = listOf("HOME", "MONITOR", "PEOPLE", "RECORDS")
         val keys = listOf("home", "monitor", "people", "records")
-        var render: (String) -> Unit = {}\n        val navItems = pages.mapIndexed { i, label ->
+        var render: (String) -> Unit = {}
+        val navItems = pages.mapIndexed { i, label ->
             TextView(this).apply {
                 text = listOf("⌂", "◉", "♙", "▤")[i] + "\n" + label
                 gravity = Gravity.CENTER
@@ -168,7 +169,6 @@ class MainActivity : AppCompatActivity() {
             addView(one, LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginEnd = dp(5) })
             addView(two, LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginStart = dp(5) })
         }
-        lateinit var render: (String) -> Unit
         render = { page ->
             host.removeAllViews()
             val scroll = ScrollView(this)
